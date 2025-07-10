@@ -1,0 +1,25 @@
+# Su Tools - Python Dependencies
+
+# Core dependencies (all tools)
+# tkinter is usually included with Python
+
+# For Su_Onefile_Builder
+pyinstaller>=5.0
+pillow>=8.0
+pywin32>=227; sys_platform == "win32"
+
+# For Su_Chat  
+openai>=1.0.0
+
+# For Su_Click
+mouse>=0.7.0
+keyboard>=0.13.0
+pywin32>=227; sys_platform == "win32"
+
+# Installation commands:
+# pip install -r requirements.txt
+# 
+# Or install individually:
+# pip install pyinstaller pillow pywin32
+# pip install openai  
+# pip install mouse keyboard
