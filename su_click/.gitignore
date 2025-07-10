@@ -1,0 +1,12 @@
+# file type
+*.pyc
+
+
+# folder
+.venv/
+__pycache__/
+presets/
+
+# file
+ak
+

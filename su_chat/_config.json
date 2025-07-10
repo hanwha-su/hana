@@ -1,0 +1,13 @@
+{
+  "geometry": "1536x1224+0+72",
+  "sessions": [
+    {
+      "history": [],
+      "chat_widgets": [],
+      "console": [],
+      "custom_title": ""
+    }
+  ],
+  "current_session_idx": 0,
+  "theme": "light"
+}
