@@ -1,4 +1,4 @@
-# Updated: Added cursor position saving before recording and restoration after playback completion
+# Updated: Fixed JSON loading error when preset files contain mixed data types (strings and objects)
 # Hotkey logic simplified to just trigger the app's functions.
 import mouse
 import keyboard
@@ -37,8 +37,8 @@ class Recorder:
         self.hotkey_triggered = False
         self.hotkey_end_time = None
         
-        # Cursor position management
-        self.saved_cursor_position = None
+        # Cursor position management for playback
+        self.playback_start_cursor_position = None
 
     def start_global_listener(self):
         threading.Thread(target=lambda: keyboard.hook(self._on_key_event), daemon=True).start()
@@ -60,18 +60,18 @@ class Recorder:
             self.log_callback(f"DEBUG: Could not get cursor position: {e}")
             return (0, 0)
 
-    def _save_cursor_position(self):
-        """Save current cursor position before recording."""
-        self.saved_cursor_position = self._get_cursor_pos()
-        self.log_callback(f"DEBUG: Cursor position saved: {self.saved_cursor_position}")
+    def _save_playback_cursor_position(self):
+        """Save current cursor position before playback starts."""
+        self.playback_start_cursor_position = self._get_cursor_pos()
+        self.log_callback(f"DEBUG: Playback cursor position saved: {self.playback_start_cursor_position}")
 
-    def _restore_cursor_position(self):
-        """Restore cursor position after playback."""
-        if self.saved_cursor_position:
-            self._set_cursor_pos(self.saved_cursor_position[0], self.saved_cursor_position[1])
-            self.log_callback(f"DEBUG: Cursor position restored: {self.saved_cursor_position}")
+    def _restore_playback_cursor_position(self):
+        """Restore cursor position after playback ends."""
+        if self.playback_start_cursor_position:
+            self._set_cursor_pos(self.playback_start_cursor_position[0], self.playback_start_cursor_position[1])
+            self.log_callback(f"DEBUG: Playback cursor position restored: {self.playback_start_cursor_position}")
         else:
-            self.log_callback("DEBUG: No saved cursor position to restore")
+            self.log_callback("DEBUG: No playback cursor position to restore")
 
     def _on_key_event(self, event: keyboard.KeyboardEvent):
         key_name = event.name
@@ -175,9 +175,6 @@ class Recorder:
 
     def start_recording(self):
         if self.is_recording: return
-        
-        # Save cursor position before recording
-        self._save_cursor_position()
         
         self.hotkey_triggered = False
         self.hotkey_end_time = None
@@ -298,7 +295,7 @@ class Recorder:
             self.is_playing = False
             self.reset_all_keys()
             # Restore cursor position after playback completion
-            self._restore_cursor_position()
+            self._restore_playback_cursor_position()
             self.log_callback("UPDATE_STATUS:Idle:lightgrey")
 
     def reset_all_keys(self):
@@ -315,6 +312,10 @@ class Recorder:
         if not self.get_events():
             self.log_callback("No preset loaded to play.")
             return
+        
+        # Save cursor position before playback starts
+        self._save_playback_cursor_position()
+        
         playback_thread = threading.Thread(target=self._playback_logic, args=(speed_factor,), daemon=True)
         playback_thread.start()
 
@@ -322,15 +323,15 @@ class Recorder:
         if not self.is_playing: return
         self.is_playing = False
         # Restore cursor position when playback is manually stopped
-        self._restore_cursor_position()
+        self._restore_playback_cursor_position()
 
     def get_events(self):
         return self.events
     
     def clear_events(self):
         self.events.clear()
-        # Clear saved cursor position when events are cleared
-        self.saved_cursor_position = None
+        # Clear playback cursor position when events are cleared
+        self.playback_start_cursor_position = None
 
     def save_events(self, filename):
         def event_to_dict(event):
@@ -339,15 +340,9 @@ class Recorder:
             elif isinstance(event, CustomMouseEvent):
                 return {'type': 'mouse', 'event_type': event.event_type, 'details': event.details, 'time': event.time, 'x': event.x, 'y': event.y}
             return {}
-        
-        # Include cursor position in saved data
-        save_data = {
-            'events': [event_to_dict(e) for e in self.events],
-            'cursor_position': self.saved_cursor_position
-        }
-        
+        dict_events = [event_to_dict(e) for e in self.events]
         with open(filename, 'w') as f:
-            json.dump(save_data, f, indent=4)
+            json.dump(dict_events, f, indent=4)
 
     def load_events(self, filename):
         self.clear_events()
@@ -358,22 +353,54 @@ class Recorder:
             self.log_callback(f"Error loading preset {filename}: {e}")
             return
 
-        # Handle both old format (list) and new format (dict)
+        # Handle different data formats
         if isinstance(data, list):
             dict_events = data
-            self.saved_cursor_position = None
-        else:
+        elif isinstance(data, dict):
             dict_events = data.get('events', [])
-            self.saved_cursor_position = data.get('cursor_position', None)
+        else:
+            self.log_callback(f"Error: Invalid preset file format in {filename}")
+            return
 
+        # Process events with proper type checking
         for d in dict_events:
+            # Skip non-dictionary items
+            if not isinstance(d, dict):
+                self.log_callback(f"DEBUG: Skipping invalid event data: {d}")
+                continue
+                
             event = None
-            if d.get('type') == 'keyboard':
-                event = keyboard.KeyboardEvent(d['event_type'], d['scan_code'], name=d.get('name'), time=d.get('time'))
-            elif d.get('type') == 'mouse':
-                event = CustomMouseEvent(event_type=d['event_type'], details=d['details'], time=d['time'], x=d['x'], y=d['y'])
+            event_type = d.get('type')
             
-            if event: self.events.append(event)
+            if event_type == 'keyboard':
+                try:
+                    event = keyboard.KeyboardEvent(
+                        d.get('event_type', 'down'), 
+                        d.get('scan_code', 0), 
+                        name=d.get('name', ''), 
+                        time=d.get('time', 0)
+                    )
+                except Exception as e:
+                    self.log_callback(f"DEBUG: Could not create keyboard event: {e}")
+                    continue
+                    
+            elif event_type == 'mouse':
+                try:
+                    event = CustomMouseEvent(
+                        event_type=d.get('event_type', 'ButtonEvent'), 
+                        details=d.get('details', {}), 
+                        time=d.get('time', 0), 
+                        x=d.get('x', 0), 
+                        y=d.get('y', 0)
+                    )
+                except Exception as e:
+                    self.log_callback(f"DEBUG: Could not create mouse event: {e}")
+                    continue
+            else:
+                self.log_callback(f"DEBUG: Unknown event type: {event_type}")
+                continue
+            
+            if event: 
+                self.events.append(event)
         
-        cursor_info = f" (cursor: {self.saved_cursor_position})" if self.saved_cursor_position else ""
-        self.log_callback(f"Successfully loaded {len(self.events)} events from {os.path.basename(filename)}{cursor_info}")
+        self.log_callback(f"Successfully loaded {len(self.events)} events from {os.path.basename(filename)}")
