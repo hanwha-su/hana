@@ -1,4 +1,4 @@
-# Updated: Modified hotkey system to use Ctrl+F9 for both play/stop and record/stop, removed Ctrl+F11 function
+# Updated: Added cursor position saving before recording and restoration after playback completion
 # Hotkey logic simplified to just trigger the app's functions.
 import mouse
 import keyboard
@@ -36,6 +36,9 @@ class Recorder:
         self.recording_end_time = None
         self.hotkey_triggered = False
         self.hotkey_end_time = None
+        
+        # Cursor position management
+        self.saved_cursor_position = None
 
     def start_global_listener(self):
         threading.Thread(target=lambda: keyboard.hook(self._on_key_event), daemon=True).start()
@@ -46,6 +49,30 @@ class Recorder:
         else:
             mouse.move(x, y, absolute=True)
 
+    def _get_cursor_pos(self):
+        """Get current cursor position."""
+        try:
+            if WIN32_AVAILABLE:
+                return win32api.GetCursorPos()
+            else:
+                return mouse.get_position()
+        except Exception as e:
+            self.log_callback(f"DEBUG: Could not get cursor position: {e}")
+            return (0, 0)
+
+    def _save_cursor_position(self):
+        """Save current cursor position before recording."""
+        self.saved_cursor_position = self._get_cursor_pos()
+        self.log_callback(f"DEBUG: Cursor position saved: {self.saved_cursor_position}")
+
+    def _restore_cursor_position(self):
+        """Restore cursor position after playback."""
+        if self.saved_cursor_position:
+            self._set_cursor_pos(self.saved_cursor_position[0], self.saved_cursor_position[1])
+            self.log_callback(f"DEBUG: Cursor position restored: {self.saved_cursor_position}")
+        else:
+            self.log_callback("DEBUG: No saved cursor position to restore")
+
     def _on_key_event(self, event: keyboard.KeyboardEvent):
         key_name = event.name
         is_ctrl = key_name in MODIFIER_KEYS
@@ -55,30 +82,25 @@ class Recorder:
             if is_ctrl:
                 self.ctrl_pressed = True
             elif self.ctrl_pressed and key_name in self.hotkey_actions:
-                # Mark hotkey as triggered and set end time
                 self.hotkey_triggered = True
-                self.hotkey_end_time = current_time + 0.2  # 200ms buffer
+                self.hotkey_end_time = current_time + 0.2
                 self.hotkey_actions[key_name]()
-                return False # Suppress event
+                return False
         
         if event.event_type == 'up' and is_ctrl:
             self.ctrl_pressed = False
-            # Extend hotkey end time when ctrl is released
             if self.hotkey_triggered:
                 self.hotkey_end_time = current_time + 0.2
 
         if is_ctrl: return True
 
         if self.is_recording:
-            # Don't record events during hotkey sequences
             if self.hotkey_triggered and current_time < self.hotkey_end_time:
                 return True
             
-            # Reset hotkey flag after buffer period
             if self.hotkey_triggered and current_time >= self.hotkey_end_time:
                 self.hotkey_triggered = False
                 
-            # Record event only if not in hotkey sequence
             if not self.hotkey_triggered:
                 self.events.append(event)
         
@@ -93,31 +115,26 @@ class Recorder:
             if key_name == 'ctrl':
                 self.ctrl_pressed = True
             elif self.ctrl_pressed and key_name in self.hotkey_actions:
-                # Mark hotkey as triggered and set end time
                 self.hotkey_triggered = True
-                self.hotkey_end_time = current_time + 0.2  # 200ms buffer
+                self.hotkey_end_time = current_time + 0.2
                 self.hotkey_actions[key_name]()
-                return False # Suppress event
+                return False
         
         if event.event_type == 'up' and key_name == 'ctrl':
             self.ctrl_pressed = False
-            # Extend hotkey end time when ctrl is released
             if self.hotkey_triggered:
                 self.hotkey_end_time = current_time + 0.2
 
         if self.is_recording:
-            # Don't record events during hotkey sequences
             if self.hotkey_triggered and current_time < self.hotkey_end_time:
                 return True
             
-            # Reset hotkey flag after buffer period
             if self.hotkey_triggered and current_time >= self.hotkey_end_time:
                 self.hotkey_triggered = False
                 
-            # Record event only if not in hotkey sequence and recording has started properly
             if (not self.hotkey_triggered and 
                 self.recording_start_time is not None and 
-                current_time >= self.recording_start_time + 0.3):  # 300ms buffer after start
+                current_time >= self.recording_start_time + 0.3):
                 self.events.append(event)
         
         return True
@@ -128,11 +145,9 @@ class Recorder:
 
         current_time = time.time()
         
-        # Don't record mouse events during hotkey sequences
         if self.hotkey_triggered and current_time < self.hotkey_end_time:
             return
             
-        # Don't record mouse events too soon after recording starts
         if (self.recording_start_time is not None and 
             current_time < self.recording_start_time + 0.3):
             return
@@ -161,7 +176,9 @@ class Recorder:
     def start_recording(self):
         if self.is_recording: return
         
-        # Clear any pending hotkey flags
+        # Save cursor position before recording
+        self._save_cursor_position()
+        
         self.hotkey_triggered = False
         self.hotkey_end_time = None
         
@@ -169,7 +186,6 @@ class Recorder:
         self.recording_start_time = time.time()
         self.events.clear()
         
-        # Replace the key event handler to include modifiers
         keyboard.unhook_all()
         threading.Thread(target=lambda: keyboard.hook(self._on_key_event_with_modifiers), daemon=True).start()
         
@@ -178,7 +194,6 @@ class Recorder:
     def stop_recording(self):
         if not self.is_recording: return
         
-        # Mark hotkey as triggered to prevent recording stop command
         self.hotkey_triggered = True
         self.hotkey_end_time = time.time() + 0.2
         
@@ -186,21 +201,17 @@ class Recorder:
         self.is_recording = False
         mouse.unhook_all()
         
-        # Filter out events that happened during hotkey sequences and near stop time
         filtered_events = []
         for event in self.events:
             event_time = event.time
-            # Keep events that are not too close to the recording end
-            if event_time < self.recording_end_time - 0.3:  # 300ms buffer before stop
+            if event_time < self.recording_end_time - 0.3:
                 filtered_events.append(event)
         
         self.events = filtered_events
         
-        # Restore original key event handler
         keyboard.unhook_all()
         threading.Thread(target=lambda: keyboard.hook(self._on_key_event), daemon=True).start()
         
-        # Reset hotkey flags
         self.hotkey_triggered = False
         self.hotkey_end_time = None
 
@@ -281,10 +292,13 @@ class Recorder:
                     elif event.event_type == 'WheelEvent':
                         mouse.wheel(event.details['delta'])
             
-            if self.is_playing: self.log_callback("Playback finished naturally.")
+            if self.is_playing: 
+                self.log_callback("Playback finished naturally.")
         finally:
             self.is_playing = False
             self.reset_all_keys()
+            # Restore cursor position after playback completion
+            self._restore_cursor_position()
             self.log_callback("UPDATE_STATUS:Idle:lightgrey")
 
     def reset_all_keys(self):
@@ -307,12 +321,16 @@ class Recorder:
     def stop_playback(self):
         if not self.is_playing: return
         self.is_playing = False
+        # Restore cursor position when playback is manually stopped
+        self._restore_cursor_position()
 
     def get_events(self):
         return self.events
     
     def clear_events(self):
         self.events.clear()
+        # Clear saved cursor position when events are cleared
+        self.saved_cursor_position = None
 
     def save_events(self, filename):
         def event_to_dict(event):
@@ -321,17 +339,32 @@ class Recorder:
             elif isinstance(event, CustomMouseEvent):
                 return {'type': 'mouse', 'event_type': event.event_type, 'details': event.details, 'time': event.time, 'x': event.x, 'y': event.y}
             return {}
-        dict_events = [event_to_dict(e) for e in self.events]
+        
+        # Include cursor position in saved data
+        save_data = {
+            'events': [event_to_dict(e) for e in self.events],
+            'cursor_position': self.saved_cursor_position
+        }
+        
         with open(filename, 'w') as f:
-            json.dump(dict_events, f, indent=4)
+            json.dump(save_data, f, indent=4)
 
     def load_events(self, filename):
         self.clear_events()
         try:
-            with open(filename, 'r') as f: dict_events = json.load(f)
+            with open(filename, 'r') as f: 
+                data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             self.log_callback(f"Error loading preset {filename}: {e}")
             return
+
+        # Handle both old format (list) and new format (dict)
+        if isinstance(data, list):
+            dict_events = data
+            self.saved_cursor_position = None
+        else:
+            dict_events = data.get('events', [])
+            self.saved_cursor_position = data.get('cursor_position', None)
 
         for d in dict_events:
             event = None
@@ -342,4 +375,5 @@ class Recorder:
             
             if event: self.events.append(event)
         
-        self.log_callback(f"Successfully loaded {len(self.events)} events from {os.path.basename(filename)}")
+        cursor_info = f" (cursor: {self.saved_cursor_position})" if self.saved_cursor_position else ""
+        self.log_callback(f"Successfully loaded {len(self.events)} events from {os.path.basename(filename)}{cursor_info}")

@@ -703,7 +703,7 @@ with open(KEY_PATH, "r") as f:
 openai.api_key = API_KEY
 
 root = tk.Tk()
-root.title("Jun Chatbot (GPT-4.1, 4.1 Mini)")
+root.title("Su Chatbot (Hana)")
 
 selected_model = tk.StringVar()
 selected_model.set("gpt-4.1-mini")
