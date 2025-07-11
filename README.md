@@ -84,9 +84,8 @@ pip install pywin32  # Windows only, for better compatibility
 
 **Global Hotkeys:**
 - `Ctrl+F8`: Start recording
-- `Ctrl+F9`: Stop recording
+- `Ctrl+F9`: Stop recording playback
 - `Ctrl+F10`: Start playback
-- `Ctrl+F11`: Stop playback
 - `Ctrl+F12`: Exit application
 
 ### 4. **Su_Alarm** (`alarm/`)
