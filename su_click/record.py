@@ -1,4 +1,4 @@
-# Updated: Fixed hotkey recording issue with more stable filtering mechanism
+# Updated: Modified hotkey system to use Ctrl+F9 for both play/stop and record/stop, removed Ctrl+F11 function
 # Hotkey logic simplified to just trigger the app's functions.
 import mouse
 import keyboard
@@ -203,6 +203,23 @@ class Recorder:
         # Reset hotkey flags
         self.hotkey_triggered = False
         self.hotkey_end_time = None
+
+    def toggle_record(self):
+        """Toggle between start and stop recording"""
+        if self.is_recording:
+            self.stop_recording()
+            self.log_callback("Recording stopped.")
+        else:
+            self.start_recording()
+            self.log_callback("Recording started.")
+
+    def toggle_playback(self):
+        """Toggle between start and stop playback"""
+        if self.is_playing:
+            self.stop_playback()
+            self.log_callback("Playback stopped.")
+        else:
+            self.start_playback()
 
     def _playback_logic(self, speed_factor=1.0):
         self.is_playing = True

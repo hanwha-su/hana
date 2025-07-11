@@ -1,5 +1,4 @@
-# su_click.pyw
-# Restored the missing load_config method.
+# Updated: Implemented specific hotkey combinations (Ctrl+F8/F9/F10/F12) with separate functions for each operation
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 import os
@@ -12,24 +11,37 @@ class SuClickApp:
         self.root.title("su_click")
         self.config = ConfigManager()
         
-        hotkey_actions = {
-            'f8': self.start_recording,
-            'f9': self.stop_recording,
-            'f10': self.start_playback,
-            'f11': self.stop_playback,
-            'f12': self.exit_app
-        }
+        # Load hotkey configuration
+        self.hotkey_config = self.config.load_hotkey_config()
+        
+        # Setup hotkey actions with specific key combinations
+        hotkey_actions = self.setup_hotkey_actions()
         
         self.recorder = Recorder(self.safe_log_callback, hotkey_actions)
-        # --- Pinning System ---
         self.pinned_presets = set(self.config.load_pinned_presets())
         
         self.setup_ui()
         self.recorder.start_global_listener()
         
         self.load_presets()
-        self.load_config() # This function is now restored
+        self.load_config()
         self.auto_load_last_preset()
+
+    def setup_hotkey_actions(self):
+        """Setup hotkey actions with specific key combinations."""
+        def handle_stop_recording_and_playback():
+            """Handle Ctrl+F9 - stop both recording and playback."""
+            if self.recorder.is_recording:
+                self.stop_recording()
+            elif self.recorder.is_playing:
+                self.stop_playback()
+
+        return {
+            self.hotkey_config['start_recording']: self.start_recording,
+            self.hotkey_config['stop_recording_and_playback']: handle_stop_recording_and_playback,
+            self.hotkey_config['start_playback']: self.start_playback,
+            self.hotkey_config['exit']: self.exit_app
+        }
 
     def setup_ui(self):
         self.status_bar = tk.Label(self.root, text="Idle", bg="lightgrey", fg="black", height=2)
@@ -53,22 +65,32 @@ class SuClickApp:
         right_frame.pack(side=tk.RIGHT, fill=tk.Y, expand=True, padx=5, pady=5)
         button_frame = tk.Frame(right_frame)
         button_frame.pack(fill=tk.X)
+        
+        # Updated button layout with specific hotkey combinations
         buttons = [
-            ("Record (Ctrl+F8)", self.start_recording),
-            ("Stop Record (Ctrl+F9)", self.stop_recording),
-            ("Play (Ctrl+F10)", self.start_playback),
-            ("Stop Play (Ctrl+F11)", self.stop_playback),
-            ("Exit (Ctrl+F12)", self.exit_app)
+            (f"Record (Ctrl+{self.hotkey_config['start_recording'].upper()})", self.start_recording),
+            (f"Stop (Ctrl+{self.hotkey_config['stop_recording_and_playback'].upper()})", self.stop_recording_and_playback),
+            (f"Play (Ctrl+{self.hotkey_config['start_playback'].upper()})", self.start_playback),
+            (f"Exit (Ctrl+{self.hotkey_config['exit'].upper()})", self.exit_app)
         ]
+        
         for text, command in buttons:
             btn = tk.Button(button_frame, text=text, command=command)
             btn.pack(fill=tk.X, padx=5, pady=2)
+        
         speed_frame = tk.Frame(right_frame, pady=10)
         speed_frame.pack(fill=tk.X, side=tk.BOTTOM)
         tk.Label(speed_frame, text="Playback Speed:").pack(side=tk.LEFT, padx=(0, 5))
         self.speed_var = tk.StringVar(value="1.0")
         self.speed_entry = tk.Entry(speed_frame, textvariable=self.speed_var, width=10)
         self.speed_entry.pack(side=tk.LEFT)
+
+    def stop_recording_and_playback(self):
+        """Stop both recording and playback operations."""
+        if self.recorder.is_recording:
+            self.stop_recording()
+        elif self.recorder.is_playing:
+            self.stop_playback()
 
     def show_context_menu(self, event):
         selection_index = self.preset_list.nearest(event.y)
@@ -252,7 +274,6 @@ class SuClickApp:
             self.load_presets()
             self.recorder.clear_events()
             
-    # --- Restored Function ---
     def load_config(self):
         """Loads window geometry from the config file."""
         geometry = self.config.load_geometry()

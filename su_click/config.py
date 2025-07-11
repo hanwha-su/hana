@@ -1,5 +1,4 @@
-# config.py
-# Added functions to save and load the list of pinned presets.
+# Updated: Modified hotkey configuration to support specific Ctrl+key combinations with separate functions
 import os
 import json
 from datetime import datetime
@@ -26,7 +25,26 @@ class ConfigManager:
         with open(self.config_file, 'w') as f:
             json.dump(data, f, indent=4)
 
-    # --- Geometry Management ---
+    def get_default_hotkey_config(self):
+        """Get default hotkey configuration."""
+        return {
+            'start_recording': 'f8',
+            'stop_recording_and_playback': 'f9',
+            'start_playback': 'f10',
+            'exit': 'f12'
+        }
+
+    def save_hotkey_config(self, hotkey_config):
+        """Save hotkey configuration."""
+        config = self._load_config_data()
+        config['hotkey_config'] = hotkey_config
+        self._save_config_data(config)
+
+    def load_hotkey_config(self):
+        """Load hotkey configuration."""
+        config = self._load_config_data()
+        return config.get('hotkey_config', self.get_default_hotkey_config())
+
     def save_geometry(self, geometry):
         config = self._load_config_data()
         config['geometry'] = geometry
@@ -36,7 +54,6 @@ class ConfigManager:
         config = self._load_config_data()
         return config.get('geometry')
 
-    # --- Pinning System ---
     def save_pinned_presets(self, pinned_list):
         config = self._load_config_data()
         config['pinned_presets'] = pinned_list
@@ -46,7 +63,6 @@ class ConfigManager:
         config = self._load_config_data()
         return config.get('pinned_presets', [])
 
-    # --- Preset File Management ---
     def get_preset_path(self, preset_name):
         if not preset_name.endswith('.json'):
             preset_name += '.json'
