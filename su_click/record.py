@@ -1,4 +1,4 @@
-# record.py
+# Updated: Fixed hotkey recording issue with more stable filtering mechanism
 # Hotkey logic simplified to just trigger the app's functions.
 import mouse
 import keyboard
@@ -32,6 +32,10 @@ class Recorder:
         self.is_playing = False
         
         self.ctrl_pressed = False
+        self.recording_start_time = None
+        self.recording_end_time = None
+        self.hotkey_triggered = False
+        self.hotkey_end_time = None
 
     def start_global_listener(self):
         threading.Thread(target=lambda: keyboard.hook(self._on_key_event), daemon=True).start()
@@ -45,28 +49,93 @@ class Recorder:
     def _on_key_event(self, event: keyboard.KeyboardEvent):
         key_name = event.name
         is_ctrl = key_name in MODIFIER_KEYS
+        current_time = time.time()
         
         if event.event_type == 'down':
             if is_ctrl:
                 self.ctrl_pressed = True
             elif self.ctrl_pressed and key_name in self.hotkey_actions:
-                # Just call the action. The app will handle the logic.
+                # Mark hotkey as triggered and set end time
+                self.hotkey_triggered = True
+                self.hotkey_end_time = current_time + 0.2  # 200ms buffer
                 self.hotkey_actions[key_name]()
                 return False # Suppress event
         
         if event.event_type == 'up' and is_ctrl:
             self.ctrl_pressed = False
+            # Extend hotkey end time when ctrl is released
+            if self.hotkey_triggered:
+                self.hotkey_end_time = current_time + 0.2
 
         if is_ctrl: return True
 
         if self.is_recording:
-            self.events.append(event)
+            # Don't record events during hotkey sequences
+            if self.hotkey_triggered and current_time < self.hotkey_end_time:
+                return True
+            
+            # Reset hotkey flag after buffer period
+            if self.hotkey_triggered and current_time >= self.hotkey_end_time:
+                self.hotkey_triggered = False
+                
+            # Record event only if not in hotkey sequence
+            if not self.hotkey_triggered:
+                self.events.append(event)
+        
+        return True
+
+    def _on_key_event_with_modifiers(self, event: keyboard.KeyboardEvent):
+        key_name = event.name
+        is_modifier = key_name in MODIFIER_KEYS
+        current_time = time.time()
+        
+        if event.event_type == 'down':
+            if key_name == 'ctrl':
+                self.ctrl_pressed = True
+            elif self.ctrl_pressed and key_name in self.hotkey_actions:
+                # Mark hotkey as triggered and set end time
+                self.hotkey_triggered = True
+                self.hotkey_end_time = current_time + 0.2  # 200ms buffer
+                self.hotkey_actions[key_name]()
+                return False # Suppress event
+        
+        if event.event_type == 'up' and key_name == 'ctrl':
+            self.ctrl_pressed = False
+            # Extend hotkey end time when ctrl is released
+            if self.hotkey_triggered:
+                self.hotkey_end_time = current_time + 0.2
+
+        if self.is_recording:
+            # Don't record events during hotkey sequences
+            if self.hotkey_triggered and current_time < self.hotkey_end_time:
+                return True
+            
+            # Reset hotkey flag after buffer period
+            if self.hotkey_triggered and current_time >= self.hotkey_end_time:
+                self.hotkey_triggered = False
+                
+            # Record event only if not in hotkey sequence and recording has started properly
+            if (not self.hotkey_triggered and 
+                self.recording_start_time is not None and 
+                current_time >= self.recording_start_time + 0.3):  # 300ms buffer after start
+                self.events.append(event)
         
         return True
             
     def _on_mouse_event(self, event):
         if not self.is_recording: return
         if isinstance(event, mouse.MoveEvent): return
+
+        current_time = time.time()
+        
+        # Don't record mouse events during hotkey sequences
+        if self.hotkey_triggered and current_time < self.hotkey_end_time:
+            return
+            
+        # Don't record mouse events too soon after recording starts
+        if (self.recording_start_time is not None and 
+            current_time < self.recording_start_time + 0.3):
+            return
 
         if isinstance(event, (mouse.ButtonEvent, mouse.WheelEvent)):
             try:
@@ -91,14 +160,49 @@ class Recorder:
 
     def start_recording(self):
         if self.is_recording: return
+        
+        # Clear any pending hotkey flags
+        self.hotkey_triggered = False
+        self.hotkey_end_time = None
+        
         self.is_recording = True
+        self.recording_start_time = time.time()
         self.events.clear()
+        
+        # Replace the key event handler to include modifiers
+        keyboard.unhook_all()
+        threading.Thread(target=lambda: keyboard.hook(self._on_key_event_with_modifiers), daemon=True).start()
+        
         mouse.hook(self._on_mouse_event)
 
     def stop_recording(self):
         if not self.is_recording: return
+        
+        # Mark hotkey as triggered to prevent recording stop command
+        self.hotkey_triggered = True
+        self.hotkey_end_time = time.time() + 0.2
+        
+        self.recording_end_time = time.time()
         self.is_recording = False
         mouse.unhook_all()
+        
+        # Filter out events that happened during hotkey sequences and near stop time
+        filtered_events = []
+        for event in self.events:
+            event_time = event.time
+            # Keep events that are not too close to the recording end
+            if event_time < self.recording_end_time - 0.3:  # 300ms buffer before stop
+                filtered_events.append(event)
+        
+        self.events = filtered_events
+        
+        # Restore original key event handler
+        keyboard.unhook_all()
+        threading.Thread(target=lambda: keyboard.hook(self._on_key_event), daemon=True).start()
+        
+        # Reset hotkey flags
+        self.hotkey_triggered = False
+        self.hotkey_end_time = None
 
     def _playback_logic(self, speed_factor=1.0):
         self.is_playing = True
@@ -129,8 +233,10 @@ class Recorder:
                 if not self.is_playing: break
 
                 if isinstance(event, keyboard.KeyboardEvent):
-                    if event.event_type == keyboard.KEY_DOWN: keyboard.press(event.name)
-                    elif event.event_type == keyboard.KEY_UP: keyboard.release(event.name)
+                    if event.event_type == keyboard.KEY_DOWN: 
+                        keyboard.press(event.name)
+                    elif event.event_type == keyboard.KEY_UP: 
+                        keyboard.release(event.name)
                 elif isinstance(event, CustomMouseEvent):
                     self._set_cursor_pos(event.x, event.y)
                     time.sleep(0.025)
