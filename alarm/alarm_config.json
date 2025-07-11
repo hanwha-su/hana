@@ -1,0 +1,11 @@
+{
+  "window_geometry": "600x500+770+501",
+  "theme": "light",
+  "alarm_sound": true,
+  "notification_duration": 30,
+  "pastel_colors": {
+    "background": "#FFF8E1",
+    "text": "#FF6B6B",
+    "accent": "#4ECDC4"
+  }
+}
