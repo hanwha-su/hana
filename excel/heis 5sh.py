@@ -9,7 +9,7 @@ from win32com.client import constants
 
 # Configuration
 TARGET_DIR        = r'D:\Temp'
-FILE_PREFIX       = 'heis_'
+FILE_PREFIX       = 'heis*'
 SOURCE_SHEET = '4. 알람 설비 태그'
 TARGET_SHEET = '5. 알람 설비 대상 정보'
 
@@ -19,8 +19,8 @@ TARGET_SHEET_START_ROW    = 3
 
 HEADER_MAP = {
     'TAG_ID': ('태그 아이디',),
-    'ALARM_KO_NAME': ('알람 한글 명', '태그 한글 명'),
-    'ALARM_EN_NAME': ('알람 영문 명', '태그 영문 명'),
+    'ALARM_KO_NAME': ('알람 한글명', '태그 한글명'),
+    'ALARM_EN_NAME': ('알람 영문명', '태그 영문명'),
 }
 
 def log(msg, t0=None):
@@ -56,29 +56,46 @@ def normalize_sheet_name(name):
     """Normalize sheet names for comparison"""
     return re.sub(r'[^\w가-힣.]', '', str(name or '')).lower()
 
-def increment_revision(filepath):
-    """Update file revision number"""
+def find_latest_revision(directory, prefix):
+    """Find the latest revision of a file."""
+    pattern = os.path.join(directory, f"{prefix}*.xlsx")
+    files = glob.glob(pattern)
+
+    latest_file = None
+    latest_rev = -1
+
+    for f in files:
+        rev_match = re.search(r'_rev(\d+)', f)
+        if rev_match:
+            rev_num = int(rev_match.group(1))
+            if rev_num > latest_rev:
+                latest_rev = rev_num
+                latest_file = f
+
+    if latest_file:
+        return latest_file, latest_rev
+
+    # If no revisioned file, find the base file
+    base_files = [f for f in files if '_rev' not in f]
+    if base_files:
+        return base_files[0], 0
+
+    return None, -1
+
+def create_new_revision(filepath, rev_num):
+    """Create a new revision of the file."""
     dir_name = os.path.dirname(filepath)
     base_name = os.path.basename(filepath)
     name, ext = os.path.splitext(base_name)
     
-    # Check if already has revision suffix
-    rev_match = re.search(r'_rev(\d+)$', name)
-    if rev_match:
-        # Increment existing revision
-        current_rev = int(rev_match.group(1))
-        new_rev = current_rev + 1
-        new_name = re.sub(r'_rev\d+$', f'_rev{new_rev:02d}', name)
-    else:
-        # Add new revision suffix
-        new_name = name + '_rev01'
+    # Remove existing revision suffix if present
+    name = re.sub(r'_rev\d+', '', name)
     
-    new_filepath = os.path.join(dir_name, new_name + ext)
+    new_rev_name = f"{name}_rev{rev_num + 1:02d}{ext}"
+    new_filepath = os.path.join(dir_name, new_rev_name)
     
-    # Copy file with new name
     shutil.copy2(filepath, new_filepath)
     log(f'Created revision file: {os.path.basename(new_filepath)}')
-    
     return new_filepath
 
 def find_header_columns(sheet, header_map):
@@ -235,13 +252,13 @@ def copy_data_values(source_sheet, target_sheet, source_cols, target_cols, num_r
     
     log(f'Successfully copied {copied_columns} columns of data')
 
-def process_file(filepath):
+def process_file(filepath, rev_num):
     """Process a single Excel file"""
     t0 = datetime.now()
-    log(f'Processing {os.path.basename(filepath)}')
     
-    # Create revision backup
-    rev_filepath = increment_revision(filepath)
+    # Create a new revision for processing
+    new_filepath = create_new_revision(filepath, rev_num)
+    log(f'Processing {os.path.basename(new_filepath)}')
     
     # Initialize Excel
     xl = None
@@ -258,7 +275,7 @@ def process_file(filepath):
             log('Warning: Could not set calculation to manual')
         
         # Open workbook
-        wb = xl.Workbooks.Open(filepath)
+        wb = xl.Workbooks.Open(new_filepath)
         
         # Find sheets by normalized names
         source_sheet = None
@@ -348,26 +365,20 @@ def main():
     # Kill any existing Excel processes
     kill_excel()
     
-    # Find all matching files
-    pattern = os.path.join(TARGET_DIR, FILE_PREFIX + '*.xlsx')
-    files = glob.glob(pattern)
+    # Find the latest revision
+    latest_file, latest_rev = find_latest_revision(TARGET_DIR, FILE_PREFIX)
     
-    if not files:
-        log(f'No files found matching pattern: {pattern}')
+    if not latest_file:
+        log(f'No files found with prefix "{FILE_PREFIX}" in {TARGET_DIR}')
         return
-    
-    log(f'Found {len(files)} files to process')
-    
-    # Process each file
-    for filepath in files:
-        try:
-            process_file(filepath)
-        except Exception as e:
-            log(f'Error with file {filepath}: {str(e)}')
         
-        # Small delay between files
-        import time
-        time.sleep(1)
+    log(f'Found latest revision: {os.path.basename(latest_file)} (rev {latest_rev})')
+
+    # Process the latest file
+    try:
+        process_file(latest_file, latest_rev)
+    except Exception as e:
+        log(f'Error processing file {latest_file}: {str(e)}')
     
     log('All files processed')
 
