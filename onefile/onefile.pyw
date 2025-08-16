@@ -6,7 +6,6 @@ import os
 import shutil
 import threading
 import time
-import sys
 
 # For icon conversion
 from PIL import Image
@@ -217,7 +216,7 @@ def update_terminal_prompt():
     terminal_text.delete("1.0", tk.END)
     terminal_text.insert(tk.END, f"[{timestr}] [{cwd}]\n")
     help_msg = (
-        "pip install pyinstaller pywin32 pillow\n"
+    "uv install pyinstaller pywin32 pillow\n"
         "Icon: .ico/.png supported (PNG auto-converts).\n"
         "─────────────────────────────────────────────\n"
     )

@@ -23,7 +23,7 @@ python onefile.pyw
 
 **Dependencies:**
 ```bash
-pip install pyinstaller pywin32 pillow
+uv pip install pyinstaller pywin32 pillow
 ```
 
 ### 2. **Su_Chat** (`su_chat/`)
@@ -47,7 +47,7 @@ python su_chat.pyw
 
 **Dependencies:**
 ```bash
-pip install openai
+uv pip install openai
 ```
 
 **Keyboard Shortcuts:**
@@ -78,8 +78,8 @@ python su_click.pyw
 
 **Dependencies:**
 ```bash
-pip install mouse keyboard
-pip install pywin32  # Windows only, for better compatibility
+uv pip install mouse keyboard
+uv pip install pywin32  # Windows only, for better compatibility
 ```
 
 **Global Hotkeys:**
@@ -124,7 +124,7 @@ python alarm.pyw
 ```bash
 git clone https://github.com/savvy773/su.git
 cd su
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 python launcher.py
 ```
 
@@ -139,29 +139,29 @@ python launcher.py
 2. **Install dependencies for the tool you want to use:**
    ```bash
    # For onefile builder
-   pip install pyinstaller pywin32 pillow
-   
+   uv pip install pyinstaller pywin32 pillow
+
    # For chat application
-   pip install openai
-   
+   uv pip install openai
+
    # For automation tool
-   pip install mouse keyboard pywin32
-   
+   uv pip install mouse keyboard pywin32
+
    # Or install all at once
-   pip install -r requirements.txt
+   uv pip install -r requirements.txt
    ```
 
 3. **Run the desired application:**
    ```bash
    # PyInstaller GUI
    cd onefile && python onefile.pyw
-   
+
    # Chat application
    cd su_chat && python su_chat.pyw
-   
+
    # Automation tool
    cd su_click && python su_click.pyw
-   
+
    # Alarm app
    cd alarm && python alarm.pyw
    ```
